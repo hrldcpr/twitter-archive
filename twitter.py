@@ -5,10 +5,15 @@ import json
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 
-API_ROOT = 'http://api.twitter.com/1/'
-API_USER = 'statuses/user_timeline'
-API_SEARCH_QUERY = ''
+API_USER = 'http://api.twitter.com/1/statuses/user_timeline.json'
+API_SEARCH = 'http://search.twitter.com/search.json'
+
+DELAY = 24 # twitter rate-limit is 150 calls per hour i.e. 1 call per 24 seconds
+
+def _log(s):
+    print(s, file=sys.stderr)
 
 def store_user_tweets(screen_name, include_rts=True, store_path='tweets/'):
     store_path += 'users/%s/' % screen_name
@@ -18,7 +23,6 @@ def store_user_tweets(screen_name, include_rts=True, store_path='tweets/'):
     # should we look for new tweets since last time?
     update_tweets = True if tweet_ids else False
 
-    url = API_ROOT + API_USER + '.json'
     query = {'screen_name': screen_name,
              'count': 200}
     if include_rts:
@@ -29,11 +33,21 @@ def store_user_tweets(screen_name, include_rts=True, store_path='tweets/'):
             query['since_id'] = max(tweet_ids)
         elif tweet_ids:
             query['max_id'] = min(tweet_ids) - 1
-        print(url + '?' + urllib.parse.urlencode(query), file=sys.stderr)
-        with urllib.request.urlopen(url + '?' + urllib.parse.urlencode(query)) as f:
-            data = f.read().decode('utf-8')
+
+        _log(API_USER + '?' + urllib.parse.urlencode(query))
+        while True:
+            _log('  ...')
+            time.sleep(DELAY)
+            try:
+                with urllib.request.urlopen(API_USER + '?' + urllib.parse.urlencode(query)) as f:
+                    data = f.read().decode('utf-8')
+            except urllib.error.HTTPError as e:
+                if e.code != 502: # ignore 502, which Twitter throws quite often
+                    raise e
+            else:
+                break
         data = json.loads(data)
-        print('  got %d tweets' % len(data), file=sys.stderr)
+        _log('  got %d tweets' % len(data))
 
         if not data:
             if update_tweets: # no more recent tweets, try old tweets
@@ -46,6 +60,4 @@ def store_user_tweets(screen_name, include_rts=True, store_path='tweets/'):
             with open(store_path + '%d.json' % t['id'], 'w') as f:
                 json.dump(t, f)
             tweet_ids.add(t['id'])
-        print('%d total tweets' % len(tweet_ids), file=sys.stderr)
-
-        time.sleep(24) # twitter rate-limit is 150 calls per hour i.e. 1 call per 24 seconds
+        _log('%d total tweets' % len(tweet_ids))
