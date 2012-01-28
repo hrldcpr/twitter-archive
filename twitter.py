@@ -26,7 +26,10 @@ def store_search_tweets(q, storage_path='tweets/'):
     _store_tweets(API_SEARCH, query, lambda x: x['results'], storage_path, SEARCH_DELAY)
 
 def _store_tweets(url, query, get_tweets, storage_path, delay):
-    os.makedirs(storage_path, exist_ok=True)
+    try:
+        os.makedirs(storage_path)
+    except OSError:
+        pass
     tweet_ids = (os.path.splitext(t) for t in os.listdir(storage_path))
     tweet_ids = {int(t[0]) for t in tweet_ids if t[1] == '.json'}
     # should we look for new tweets since last time?
